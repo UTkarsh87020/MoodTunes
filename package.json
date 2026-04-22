@@ -1,0 +1,23 @@
+{
+  "name": "moodtunes",
+  "version": "1.0.0",
+  "description": "AI Powered Mood-Based Music Web App",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "vercel build",
+    "deploy": "vercel --prod"
+  },
+  "keywords": [
+    "music",
+    "mood",
+    "ai",
+    "spotify",
+    "nlp"
+  ],
+  "author": "MoodTunes",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "vercel": "latest"
+  }
+}
