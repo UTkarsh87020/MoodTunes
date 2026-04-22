@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoodTunes - AI Powered Mood-Based Music</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 MoodTunes</h1>
+            <p class="tagline">AI-Powered Mood-Based Music Recommendations</p>
+        </header>
+        
+        <main>
+            <div id="landing" class="section active">
+                <div class="welcome-content">
+                    <h2>How are you feeling today?</h2>
+                    <p>Tell us your mood and we'll find the perfect music for you</p>
+                    <button id="startBtn" class="btn-primary">Start Listening</button>
+                </div>
+            </div>
+
+            <div id="moodInput" class="section">
+                <div class="input-container">
+                    <label for="moodText">Describe your mood:</label>
+                    <textarea 
+                        id="moodText" 
+                        placeholder="e.g., I feel happy and energetic today!"
+                        rows="4"
+                    ></textarea>
+                    
+                    <div class="language-selector">
+                        <label for="language">Language:</label>
+                        <select id="language">
+                            <option value="en">English</option>
+                            <option value="es">Español</option>
+                            <option value="hi">हिन्दी</option>
+                        </select>
+                    </div>
+                    
+                    <button id="analyzeBtn" class="btn-primary">Analyze Mood</button>
+                    <button id="backBtn" class="btn-secondary">Back</button>
+                </div>
+            </div>
+
+            <div id="loading" class="section">
+                <div class="loader"></div>
+                <p>Analyzing your mood...</p>
+            </div>
+
+            <div id="results" class="section">
+                <div id="moodResult" class="mood-card"></div>
+                <div id="recommendations" class="recommendations-grid"></div>
+                <button id="newSearchBtn" class="btn-secondary">New Search</button>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by Google NLP & Spotify API</p>
+        </footer>
+    </div>
+
+    <!-- Vercel Speed Insights -->
+    <script>
+        window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+    </script>
+    <script defer src="/_vercel/speed-insights/script.js"></script>
+
+    <!-- Main application script -->
+    <script src="script.js"></script>
+</body>
+</html>
