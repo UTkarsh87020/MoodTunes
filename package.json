@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "description": "AI Powered Mood-Based Music Web App",
   "scripts": {
-    "dev": "vercel dev",
-    "build": "vercel build",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "server": "node server.js",
     "deploy": "vercel --prod"
   },
   "keywords": [
@@ -16,8 +18,17 @@
   ],
   "author": "MoodTunes",
   "license": "MIT",
-  "dependencies": {},
   "devDependencies": {
-    "vercel": "latest"
+    "@vitejs/plugin-react": "^6.0.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "vercel": "latest",
+    "vite": "^8.0.10"
+  },
+  "dependencies": {
+    "lucide-react": "^1.11.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-router-dom": "^7.14.2"
   }
 }

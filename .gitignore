@@ -1,5 +1,19 @@
+# Dependencies
 node_modules/
+
+# Build output
+dist/
+
+# Environment variables
 .env
-.vercel
-*.log
+
+# Vercel
+.vercel/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+*.swp

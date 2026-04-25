@@ -1,41 +1,110 @@
 /**
  * Serverless Function: Analyze Mood
- * Uses Google Cloud Natural Language API to analyze sentiment and emotion
+ * Uses keyword-based sentiment analysis — no external API needed
  */
 
-// Allowed language codes supported by Google NLP
+// Allowed language codes
 const ALLOWED_LANGUAGES = ['en', 'hi', 'es'];
 
-// Mood classification based on sentiment score AND magnitude
-function classifyMood(score, magnitude) {
-  if (score > 0.5) {
-    return { mood: 'happy', genres: ['pop', 'dance', 'happy', 'party'] };
-  } else if (score > 0.25) {
-    return { mood: 'energetic', genres: ['rock', 'electronic', 'workout', 'upbeat'] };
-  } else if (score >= -0.25) {
-    return { mood: 'calm', genres: ['ambient', 'chill', 'acoustic', 'indie'] };
-  } else if (score >= -0.5 && magnitude < 1.0) {
-    // Low magnitude negative = genuinely sad/blue
-    return { mood: 'sad', genres: ['sad', 'blues', 'indie', 'melancholic'] };
-  } else {
-    // High magnitude negative = intense/angry
-    return { mood: 'intense', genres: ['metal', 'hard rock', 'intense', 'aggressive'] };
+// Keyword dictionaries for mood detection
+const MOOD_KEYWORDS = {
+  happy: [
+    'happy', 'joy', 'joyful', 'excited', 'great', 'amazing', 'wonderful',
+    'fantastic', 'awesome', 'cheerful', 'elated', 'thrilled', 'delighted',
+    'love', 'lovely', 'good', 'positive', 'blessed', 'grateful', 'smile',
+    'laugh', 'fun', 'celebrate', 'party', 'euphoric', 'glad', 'ecstatic',
+    'खुश', 'प्रसन्न', 'आनंद', 'feliz', 'alegre', 'contento'
+  ],
+  energetic: [
+    'energetic', 'motivated', 'pumped', 'powerful', 'strong', 'workout',
+    'exercise', 'run', 'hustle', 'grind', 'focused', 'determined', 'driven',
+    'ambitious', 'productive', 'active', 'dynamic', 'fired up', 'charged',
+    'ready', 'unstoppable', 'confident', 'bold', 'fierce',
+    'ऊर्जा', 'शक्तिशाली', 'energético', 'fuerte'
+  ],
+  calm: [
+    'calm', 'peaceful', 'relaxed', 'chill', 'serene', 'tranquil', 'quiet',
+    'still', 'gentle', 'soft', 'easy', 'comfortable', 'cozy', 'mellow',
+    'content', 'satisfied', 'balanced', 'mindful', 'meditate', 'breathe',
+    'slow', 'tired', 'sleepy', 'lazy', 'bored', 'neutral', 'okay', 'fine',
+    'शांत', 'calmado', 'tranquilo', 'relajado'
+  ],
+  sad: [
+    'sad', 'unhappy', 'down', 'depressed', 'lonely', 'alone', 'miss',
+    'missing', 'heartbroken', 'hurt', 'pain', 'cry', 'crying', 'tears',
+    'lost', 'hopeless', 'gloomy', 'melancholy', 'blue', 'grief', 'grieve',
+    'mourn', 'sorrow', 'empty', 'broken', 'failed', 'disappointed',
+    'उदास', 'triste', 'solo', 'llorar'
+  ],
+  intense: [
+    'angry', 'intense', 'furious', 'rage', 'mad', 'frustrated', 'annoyed',
+    'irritated', 'aggressive', 'hate', 'hatred', 'violent', 'stressed',
+    'anxious', 'overwhelmed', 'tense', 'nervous', 'worried', 'panic',
+    'fear', 'scared', 'dark', 'heavy', 'pressure', 'chaos', 'battle',
+    'fight', 'war', 'rebel', 'wild', 'explosive',
+    'गुस्सा', 'enojado', 'furioso', 'estresado'
+  ]
+};
+
+// Analyze mood from text using keyword matching + scoring
+function analyzeMoodFromText(text) {
+  const lower = text.toLowerCase();
+  const words = lower.split(/\s+/);
+
+  // Count keyword hits per mood
+  const scores = { happy: 0, energetic: 0, calm: 0, sad: 0, intense: 0 };
+
+  for (const [mood, keywords] of Object.entries(MOOD_KEYWORDS)) {
+    for (const keyword of keywords) {
+      if (lower.includes(keyword)) {
+        scores[mood] += keyword.split(' ').length; // multi-word phrases score higher
+      }
+    }
   }
+
+  // Find the mood with the highest score
+  let topMood = 'calm'; // default
+  let topScore = 0;
+
+  for (const [mood, score] of Object.entries(scores)) {
+    if (score > topScore) {
+      topScore = score;
+      topMood = mood;
+    }
+  }
+
+  // Calculate a rough sentiment score (-1.0 to 1.0)
+  const positiveScore = scores.happy + scores.energetic;
+  const negativeScore = scores.sad + scores.intense;
+  const total = positiveScore + negativeScore + scores.calm + 0.01;
+  const sentimentScore = parseFloat(((positiveScore - negativeScore) / total).toFixed(2));
+
+  // Calculate magnitude (how strong the emotion is)
+  const magnitude = parseFloat(Math.min((topScore / 3), 1.0).toFixed(2));
+
+  return { topMood, sentimentScore, magnitude, scores };
 }
 
+// Mood to genres mapping
+const MOOD_GENRES = {
+  happy:    ['pop', 'dance', 'happy', 'party'],
+  energetic: ['rock', 'electronic', 'workout', 'upbeat'],
+  calm:     ['ambient', 'chill', 'acoustic', 'indie'],
+  sad:      ['sad', 'blues', 'indie', 'melancholic'],
+  intense:  ['metal', 'hard rock', 'intense', 'aggressive']
+};
+
 module.exports = async (req, res) => {
-  // Enable CORS — restrict to same Vercel origin in production
+  // Enable CORS
   const origin = req.headers.origin || '';
   res.setHeader('Access-Control-Allow-Origin', origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Handle preflight request
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -43,69 +112,23 @@ module.exports = async (req, res) => {
   try {
     const { text, language = 'en' } = req.body;
 
-    // Validate text input
     if (!text || text.trim().length === 0) {
       return res.status(400).json({ error: 'Text is required' });
     }
 
-    // Validate language — whitelist only supported codes
     const safeLanguage = ALLOWED_LANGUAGES.includes(language) ? language : 'en';
 
-    // Get API key from environment
-    const apiKey = process.env.GOOGLE_NLP_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'API key not configured' });
-    }
+    // Run local keyword-based mood analysis
+    const { topMood, sentimentScore, magnitude } = analyzeMoodFromText(text);
 
-    // Prepare request to Google NLP API
-    const nlpUrl = `https://language.googleapis.com/v1/documents:analyzeSentiment?key=${apiKey}`;
-
-    const requestBody = {
-      document: {
-        type: 'PLAIN_TEXT',
-        language: safeLanguage,
-        content: text
-      },
-      encodingType: 'UTF8'
-    };
-
-    // Call Google NLP API using native fetch (Node 20 built-in)
-    const response = await fetch(nlpUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Google NLP API Error:', errorData);
-      return res.status(response.status).json({
-        error: 'Failed to analyze mood',
-        details: errorData.error?.message || 'Unknown error'
-      });
-    }
-
-    const data = await response.json();
-
-    // Extract sentiment data
-    const sentiment = data.documentSentiment;
-    const score = sentiment.score;       // Range: -1.0 (negative) to 1.0 (positive)
-    const magnitude = sentiment.magnitude; // Strength of emotion
-
-    // Classify mood using both score and magnitude
-    const moodData = classifyMood(score, magnitude);
-
-    // Return analysis results
     return res.status(200).json({
       success: true,
       sentiment: {
-        score: score,
+        score: sentimentScore,
         magnitude: magnitude
       },
-      mood: moodData.mood,
-      genres: moodData.genres,
+      mood: topMood,
+      genres: MOOD_GENRES[topMood],
       originalText: text
     });
 

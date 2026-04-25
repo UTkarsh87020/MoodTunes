@@ -1,109 +1,102 @@
 /**
  * Serverless Function: Get Music Recommendations
- * Uses Spotify Web API to fetch songs based on mood/genres
+ * Uses iTunes Search API — completely free, no API key required.
+ * Spotify deprecated /search and /recommendations for new apps in 2024.
  */
 
 // Allowed language codes
 const ALLOWED_LANGUAGES = ['en', 'hi', 'es'];
 
-// Get Spotify access token using Client Credentials flow
-async function getSpotifyToken(clientId, clientSecret) {
-  const tokenUrl = 'https://accounts.spotify.com/api/token';
+// Mood → search terms for iTunes
+const MOOD_SEARCH_TERMS = {
+  happy:     ['happy upbeat pop', 'feel good dance', 'party pop hits'],
+  energetic: ['high energy workout rock', 'electronic dance power', 'motivational rock'],
+  calm:      ['chill acoustic relaxing', 'ambient peaceful meditation', 'soft indie folk'],
+  sad:       ['sad emotional indie', 'melancholy blues acoustic', 'heartbreak soul'],
+  intense:   ['intense metal rock', 'aggressive hard rock', 'dark powerful metal']
+};
 
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+// iTunes storefront by language (country code)
+const ITUNES_COUNTRY = {
+  'en': 'US',
+  'hi': 'IN',
+  'es': 'ES'
+};
 
-  const response = await fetch(tokenUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${credentials}`,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: 'grant_type=client_credentials'
-  });
+/**
+ * Search iTunes for tracks matching mood
+ */
+async function searchItunesTracks(mood, language = 'en') {
+  const terms = MOOD_SEARCH_TERMS[mood] || MOOD_SEARCH_TERMS.calm;
+  // Pick a random search term from the mood's list to add variety
+  const randomTerm = terms[Math.floor(Math.random() * terms.length)];
 
-  if (!response.ok) {
-    throw new Error('Failed to get Spotify access token');
-  }
-
-  const data = await response.json();
-  return data.access_token;
-}
-
-// Search for tracks on Spotify
-async function searchTracks(accessToken, genres, mood, language = 'en') {
-  const searchUrl = 'https://api.spotify.com/v1/search';
-
-  // Build a valid Spotify genre query — each genre must be quoted separately
-  const genreQuery = genres
-    .slice(0, 2)
-    .map(g => `genre:"${g}"`)
-    .join(' OR ');
-  const query = `${genreQuery} ${mood}`;
-
-  // Language-specific market codes
-  const marketMap = {
-    'en': 'US',
-    'hi': 'IN',
-    'es': 'ES'
-  };
-  const market = marketMap[language] || 'US';
+  const country = ITUNES_COUNTRY[language] || 'US';
 
   const params = new URLSearchParams({
-    q: query,
-    type: 'track',
-    market: market,
-    limit: 12
+    term: randomTerm,
+    media: 'music',
+    entity: 'song',
+    limit: 25,
+    country: country,
+    explicit: 'No'
   });
 
-  const response = await fetch(`${searchUrl}?${params}`, {
-    method: 'GET',
+  const url = `https://itunes.apple.com/search?${params.toString()}`;
+
+  const response = await fetch(url, {
     headers: {
-      'Authorization': `Bearer ${accessToken}`
+      'Accept': 'application/json'
     }
   });
 
   if (!response.ok) {
-    throw new Error('Failed to search tracks on Spotify');
+    throw new Error(`iTunes API error: ${response.status}`);
   }
 
   const data = await response.json();
 
-  // Guard against unexpected API response shape
-  if (!data.tracks || !Array.isArray(data.tracks.items)) {
+  if (!data.results || !Array.isArray(data.results)) {
     return [];
   }
 
-  return data.tracks.items;
+  // Filter to only tracks that have a preview URL
+  const withPreview = data.results.filter(t => t.previewUrl);
+
+  // Return up to 12 tracks
+  return withPreview.slice(0, 12);
 }
 
-// Format track data for frontend
+/**
+ * Format iTunes track data for frontend
+ */
 function formatTracks(tracks, mood) {
   return tracks.map(track => ({
-    id: track.id,
-    name: track.name,
-    artist: track.artists.map(a => a.name).join(', '),
-    album: track.album.name,
-    albumArt: track.album.images[0]?.url || '',
-    previewUrl: track.preview_url,
-    spotifyUrl: track.external_urls.spotify,
-    duration: track.duration_ms,
+    id: String(track.trackId),
+    name: track.trackName,
+    artist: track.artistName,
+    album: track.collectionName || '',
+    albumArt: track.artworkUrl100
+      ? track.artworkUrl100.replace('100x100', '300x300')
+      : '',
+    previewUrl: track.previewUrl,
+    spotifyUrl: track.trackViewUrl, // iTunes track URL instead
+    duration: track.trackTimeMillis || 0,
     mood: mood
   }));
 }
 
 module.exports = async (req, res) => {
-  // Enable CORS — restrict to same Vercel origin in production
+  // Enable CORS
   const origin = req.headers.origin || '';
   res.setHeader('Access-Control-Allow-Origin', origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Handle preflight request
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -111,34 +104,20 @@ module.exports = async (req, res) => {
   try {
     const { genres, mood, language = 'en' } = req.body;
 
-    // Validate genres input
     if (!genres || !Array.isArray(genres) || genres.length === 0) {
       return res.status(400).json({ error: 'Genres array is required' });
     }
 
-    // Validate mood input
     if (!mood) {
       return res.status(400).json({ error: 'Mood is required' });
     }
 
-    // Validate language — whitelist only supported codes
     const safeLanguage = ALLOWED_LANGUAGES.includes(language) ? language : 'en';
 
-    // Get Spotify credentials from environment
-    const clientId = process.env.SPOTIFY_CLIENT_ID;
-    const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+    // Search iTunes for tracks matching the mood
+    const tracks = await searchItunesTracks(mood, safeLanguage);
 
-    if (!clientId || !clientSecret) {
-      return res.status(500).json({ error: 'Spotify credentials not configured' });
-    }
-
-    // Get Spotify access token
-    const accessToken = await getSpotifyToken(clientId, clientSecret);
-
-    // Search for tracks
-    const tracks = await searchTracks(accessToken, genres, mood, safeLanguage);
-
-    // Format and return results
+    // Format and return
     const formattedTracks = formatTracks(tracks, mood);
 
     return res.status(200).json({
